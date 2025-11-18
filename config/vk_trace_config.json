@@ -1,0 +1,13 @@
+{
+  "trace_enabled": true,
+  "trace_calls": [
+    "vkCreateInstance",
+    "vkEnumeratePhysicalDevices",
+    "vkCreateDevice",
+    "vkGetDeviceProcAddr",
+    "vkGetInstanceProcAddr"
+  ],
+  "trace_format": "jsonl",
+  "max_entries": 20000,
+  "notes": "This is a high-level trace configuration. The current wrapper only logs vkGetInstanceProcAddr, but this file sets expectations for the final wrapper."
+}
