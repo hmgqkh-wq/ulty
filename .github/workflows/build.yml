@@ -1,96 +1,43 @@
-name: build-android-ndk
+name: Build Android Wrapper
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    branches:
+      - main
 
 jobs:
-  build-android:
+  build:
     runs-on: ubuntu-latest
-    env:
-      ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
-      ANDROID_NDK_VERSION: "25.2.9519653"   # change if you want another NDK
-      ANDROID_API_LEVEL: "31"
-      ANDROID_ABI: "arm64-v8a"
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v3
 
-    - name: Setup JDK (required by sdkmanager)
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
 
-    - name: Install required packages
-      run: |
-        sudo apt-get update -y
-        sudo apt-get install -y unzip curl cmake build-essential ninja-build
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_TOOLCHAIN_FILE=$NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=21
 
-    - name: Download Android commandline tools
-      run: |
-        mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"
-        cd "${ANDROID_SDK_ROOT}"
-        curl -sS -o commandlinetools.zip "https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip"
-        unzip -q commandlinetools.zip -d cmdline-tools
-        # Move to expected layout: $ANDROID_SDK_ROOT/cmdline-tools/latest
-        mkdir -p cmdline-tools/latest
-        mv cmdline-tools/cmdline-tools/* cmdline-tools/latest/ || true
-        rm -f commandlinetools.zip
+      - name: Build
+        run: cmake --build build --config Release
 
-    - name: Install Android SDK packages (platform-tools, platforms, NDK)
-      run: |
-        yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${ANDROID_SDK_ROOT}" "platform-tools" "platforms;android-${ANDROID_API_LEVEL}" "ndk;${ANDROID_NDK_VERSION}"
-        ls -la "${ANDROID_SDK_ROOT}"
+      - name: Package ZIP
+        run: |
+          mkdir -p out/libs/arm64-v8a
+          cp build/libvulkan.xeno_wrapper.so out/libs/arm64-v8a/
+          cp manifest.json out/
+          cp -r config/ out/config/
+          cd out && zip -r ../your_wrapper.zip .
 
-    - name: Set NDK variables
-      run: |
-        echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}" >> $GITHUB_ENV
-        echo "PATH=${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}:${PATH}" >> $GITHUB_ENV
-        echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
-
-    - name: Configure & build (NDK / arm64-v8a)
-      working-directory: ${{ github.workspace }}
-      run: |
-        mkdir -p build && cd build
-        cmake -DANDROID_ABI=${{ env.ANDROID_ABI }} \
-              -DANDROID_PLATFORM=android-${{ env.ANDROID_API_LEVEL }} \
-              -DCMAKE_TOOLCHAIN_FILE=${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}/build/cmake/android.toolchain.cmake \
-              -DANDROID_STL=c++_shared \
-              -DCMAKE_BUILD_TYPE=Release \
-              ..
-        cmake --build . -- -j$(nproc)
-
-    - name: Package Eden driver ZIP (exact layout)
-      working-directory: ${{ github.workspace }}
-      run: |
-        PKG="your_wrapper.zip"
-        rm -f "$PKG"
-        rm -rf eden_pkg
-        mkdir -p eden_pkg/libs/arm64-v8a
-        mkdir -p eden_pkg/config
-
-        SO=$(find build -maxdepth 2 -type f -name "libvulkan.xeno_wrapper*.so" | head -n1)
-        if [ -z "$SO" ]; then
-          echo "ERROR: built .so not found in build/"
-          ls -la build || true
-          exit 1
-        fi
-
-        cp "$SO" eden_pkg/libs/arm64-v8a/libvulkan.xeno_wrapper.so
-
-        # copy manifest and config files (if present)
-        cp manifest.json eden_pkg/ || true
-        cp -r config/* eden_pkg/config/ || true
-
-        (cd eden_pkg && zip -r "../$PKG" .)
-        echo "Package contents:"
-        unzip -l "$PKG"
-
-    - name: Upload ZIP artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: your_wrapper
-        path: your_wrapper.zip
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: your_wrapper
+          path: your_wrapper.zip
