@@ -1,0 +1,7 @@
+{
+  "gpu": "Xclipse 940 (Exynos 2400E)",
+  "mode": "collector_b_easy",
+  "optimize": false,
+  "target": "vulkan",
+  "notes": "This is NOT a performance wrapper. This is data-collection mode only."
+}
