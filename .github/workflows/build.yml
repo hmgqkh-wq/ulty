@@ -1,4 +1,4 @@
-name: build-and-package
+name: build-android-ndk
 
 on:
   push:
@@ -6,52 +6,90 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
+      ANDROID_NDK_VERSION: "25.2.9519653"   # change if you want another NDK
+      ANDROID_API_LEVEL: "31"
+      ANDROID_ABI: "arm64-v8a"
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Install build deps
-      run: sudo apt-get update && sudo apt-get install -y cmake gcc zip build-essential
+    - name: Setup JDK (required by sdkmanager)
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
 
-    - name: Configure & build
+    - name: Install required packages
       run: |
-        mkdir -p build
-        cd build
-        cmake ..
-        make -j$(nproc)
+        sudo apt-get update -y
+        sudo apt-get install -y unzip curl cmake build-essential ninja-build
+
+    - name: Download Android commandline tools
+      run: |
+        mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"
+        cd "${ANDROID_SDK_ROOT}"
+        curl -sS -o commandlinetools.zip "https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip"
+        unzip -q commandlinetools.zip -d cmdline-tools
+        # Move to expected layout: $ANDROID_SDK_ROOT/cmdline-tools/latest
+        mkdir -p cmdline-tools/latest
+        mv cmdline-tools/cmdline-tools/* cmdline-tools/latest/ || true
+        rm -f commandlinetools.zip
+
+    - name: Install Android SDK packages (platform-tools, platforms, NDK)
+      run: |
+        yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${ANDROID_SDK_ROOT}" "platform-tools" "platforms;android-${ANDROID_API_LEVEL}" "ndk;${ANDROID_NDK_VERSION}"
+        ls -la "${ANDROID_SDK_ROOT}"
+
+    - name: Set NDK variables
+      run: |
+        echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}" >> $GITHUB_ENV
+        echo "PATH=${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}:${PATH}" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+
+    - name: Configure & build (NDK / arm64-v8a)
+      working-directory: ${{ github.workspace }}
+      run: |
+        mkdir -p build && cd build
+        cmake -DANDROID_ABI=${{ env.ANDROID_ABI }} \
+              -DANDROID_PLATFORM=android-${{ env.ANDROID_API_LEVEL }} \
+              -DCMAKE_TOOLCHAIN_FILE=${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}/build/cmake/android.toolchain.cmake \
+              -DANDROID_STL=c++_shared \
+              -DCMAKE_BUILD_TYPE=Release \
+              ..
+        cmake --build . -- -j$(nproc)
 
     - name: Package Eden driver ZIP (exact layout)
+      working-directory: ${{ github.workspace }}
       run: |
         PKG="your_wrapper.zip"
         rm -f "$PKG"
+        rm -rf eden_pkg
         mkdir -p eden_pkg/libs/arm64-v8a
         mkdir -p eden_pkg/config
 
-        # find the built .so and ensure exact name in package
-        SO=$(find build -maxdepth 1 -type f -name "libvulkan.xeno_wrapper*.so" | head -n1)
+        SO=$(find build -maxdepth 2 -type f -name "libvulkan.xeno_wrapper*.so" | head -n1)
         if [ -z "$SO" ]; then
-          echo "ERROR: built .so not found"
+          echo "ERROR: built .so not found in build/"
           ls -la build || true
           exit 1
         fi
+
         cp "$SO" eden_pkg/libs/arm64-v8a/libvulkan.xeno_wrapper.so
 
-        # copy manifest and config files
+        # copy manifest and config files (if present)
         cp manifest.json eden_pkg/ || true
-        cp config/debug.json eden_pkg/config/ || true
-        cp config/profile.json eden_pkg/config/ || true
-        cp config/logging_rules.json eden_pkg/config/ || true
-        cp config/vk_trace_config.json eden_pkg/config/ || true
-        cp config/shader_debug.json eden_pkg/config/ || true
+        cp -r config/* eden_pkg/config/ || true
 
         (cd eden_pkg && zip -r "../$PKG" .)
         echo "Package contents:"
         unzip -l "$PKG"
 
-    - name: Upload artifact (ZIP)
+    - name: Upload ZIP artifact
       uses: actions/upload-artifact@v4
       with:
         name: your_wrapper
