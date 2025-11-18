@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "log_level": "verbose",
+  "tag": "XENO_DEBUG",
+  "notes": "High-verbosity debug mode for B-EASY collector"
+}
