@@ -1,0 +1,8 @@
+{
+  "capture_shaders": false,
+  "dump_spirv": false,
+  "dump_disassembly": false,
+  "shader_event_logging": true,
+  "max_shader_reports": 500,
+  "notes": "Shader capture is disabled for B-EASY; Vulkan-only introspection. Final wrapper will use this."
+}
