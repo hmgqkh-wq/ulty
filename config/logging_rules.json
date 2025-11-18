@@ -1,0 +1,17 @@
+{
+  "log_vk_calls": true,
+  "log_instance_creation": true,
+  "log_device_creation": true,
+  "log_extensions": true,
+  "log_physical_device_props": true,
+  "log_memory_props": true,
+  "log_queue_families": true,
+  "log_formats": true,
+  "log_mesh_shader": true,
+  "log_raytracing": true,
+  "log_subgroups": true,
+  "log_limits": true,
+  "log_driver_uuid": true,
+
+  "notes": "These rules describe what the final wrapper is supposed to log. Current wrapper logs what it can (B-EASY Vulkan-only)."
+}
