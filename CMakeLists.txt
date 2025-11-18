@@ -11,4 +11,9 @@ add_library(vulkan.xeno_wrapper SHARED
     src/feature_dump.c
 )
 
-target_link_libraries(vulkan.xeno_wrapper dl log)
+# Detect Android and link log only there
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    target_link_libraries(vulkan.xeno_wrapper log dl)
+else()
+    target_link_libraries(vulkan.xeno_wrapper dl)
+endif()
